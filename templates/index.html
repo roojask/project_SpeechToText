@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Pathology Recorder - Direct PDF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900">
+
+    <nav class="bg-indigo-900 text-white shadow-md p-4 mb-8">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold"><i class="fa-solid fa-bolt-lightning mr-2"></i> Auto-Path Report</h1>
+            <span class="text-sm opacity-70">Direct PDF Generation</span>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="space-y-6">
+            <section class="bg-white rounded-2xl shadow-sm border p-6">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-indigo-800">
+                    <i class="fa-solid fa-microphone mr-2"></i> บันทึกเสียงพยาธิวิทยา
+                </h2>
+                
+                <div class="bg-indigo-50 rounded-xl p-8 text-center mb-6">
+                    <div id="status" class="text-xs font-black text-indigo-500 uppercase mb-4">Ready</div>
+                    <div class="flex justify-center gap-4">
+                        <button id="startBtn" class="bg-red-500 hover:bg-red-600 text-white w-20 h-20 rounded-full shadow-xl transition-all active:scale-90">
+                            <i class="fa-solid fa-microphone-lines text-2xl"></i>
+                        </button>
+                        <button id="stopBtn" class="bg-slate-700 hover:bg-slate-800 text-white w-20 h-20 rounded-full shadow-xl transition-all active:scale-90 disabled:opacity-20" disabled>
+                            <i class="fa-solid fa-square text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <input type="file" id="audioFileInput" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700">
+                    <button onclick="processAndDirectPDF()" id="processBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg transition-all">
+                        สร้าง PDF ทันที
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <section class="bg-slate-200 rounded-2xl border-2 border-dashed border-slate-300 h-[80vh] flex flex-col relative overflow-hidden">
+            <div id="previewPlaceholder" class="flex-1 flex flex-col items-center justify-center text-slate-400">
+                <i class="fa-solid fa-file-pdf text-6xl mb-4 opacity-20"></i>
+                <p>รอประมวลผลเพื่อแสดงตัวอย่าง...</p>
+            </div>
+            <iframe id="pdfFrame" class="w-full h-full hidden"></iframe>
+            <a id="downloadBtn" href="#" download class="absolute bottom-6 right-6 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-2xl hidden hover:bg-indigo-700 transition-all">
+                <i class="fa-solid fa-download mr-2"></i> ดาวน์โหลดรายงาน
+            </a>
+        </section>
+    </main>
+
+    <div id="loader" class="fixed inset-0 bg-indigo-900/60 backdrop-blur-md flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl text-center shadow-2xl max-w-sm">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-indigo-600 mx-auto mb-4"></div>
+            <p class="font-bold text-slate-800 text-lg">AI กำลังวิเคราะห์และเขียน PDF...</p>
+            <p class="text-sm text-slate-500 mt-2">ขั้นตอนนี้อาจใช้เวลา 5-10 วินาที</p>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        document.getElementById('startBtn').onclick = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/mpeg' });
+                const file = new File([audioBlob], "live.mp3", { type: "audio/mpeg" });
+                const container = new DataTransfer();
+                container.items.add(file);
+                document.getElementById('audioFileInput').files = container.files;
+            };
+            mediaRecorder.start();
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('status').innerText = "Recording...";
+        };
+
+        document.getElementById('stopBtn').onclick = () => {
+            mediaRecorder.stop();
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('status').innerText = "Finished";
+        };
+
+        async function processAndDirectPDF() {
+            const fileInput = document.getElementById('audioFileInput');
+            if (!fileInput.files[0]) return alert("กรุณาบันทึกหรือเลือกไฟล์เสียง");
+
+            const formData = new FormData();
+            formData.append('audio', fileInput.files[0]);
+
+            document.getElementById('loader').classList.remove('hidden');
+
+            try {
+                const res = await fetch('/auto-generate', { method: 'POST', body: formData });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+
+                document.getElementById('pdfFrame').src = url;
+                document.getElementById('pdfFrame').classList.remove('hidden');
+                document.getElementById('previewPlaceholder').classList.add('hidden');
+                document.getElementById('downloadBtn').href = url;
+                document.getElementById('downloadBtn').classList.remove('hidden');
+            } catch (error) {
+                alert("เกิดข้อผิดพลาด");
+            } finally {
+                document.getElementById('loader').classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
